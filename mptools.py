@@ -8,7 +8,7 @@ For debug purposes, settings.disable is provided for you to disable multiprocess
 # from concurrent.futures import ProcessPoolExecutor
 import time
 
-from typing import Callable, Any, TextIO, Protocol
+from typing import Callable, Any, TextIO, Protocol, TypeVar, TypeAlias
 from abc import abstractmethod
 
 import multiprocessing as mp
@@ -72,8 +72,7 @@ def tqdm_starmap(func: Callable, args: list[list[Any]], nprocs: int):
     """Starmap function for multiprocessing, including TQDM progress bar."""
     # def func1(args):
     #     return func(*args)
-    func1 = _Func1(func)
-    
+    func1 = _Func1(func)    
     return tqdm_map(func1, args, nprocs)
 
 
@@ -81,9 +80,6 @@ def tqdm_dictmap(func: Callable, args: list[dict], nprocs: int):
     """Dict map for multiprocessing, including TQDM progress bar. """
     func1 = _Func1(func).call_kwargs
     return tqdm_map(func1, args, nprocs)
-
-
-
 
 
 def starwrite(func: Callable, 
@@ -143,6 +139,10 @@ def tqdm_starwrite(func: Callable,
 
 
 
+Arg = TypeVar('Arg')
+InputQ1 = TypeVar('InputQ1')
+OutputQ1 = TypeVar('OutputQ1')
+
 
 
 
@@ -155,7 +155,6 @@ class _ReadWorker:
         for arg in args:
             out = self.f_in(arg)
             queue1.put(out)
-            
             
             # Don't let too many items pile up in the queue
             while True:
@@ -174,6 +173,7 @@ class _Worker:
     def __call__(self, 
                  arg: Any, 
                  data: Any, 
+                 is_complete: bool,
                  queue2: mp.Queue
                  ):
         """
@@ -184,6 +184,8 @@ class _Worker:
             Identifying arugment.
         data : Any
             Data to process.
+        is_complete : bool
+            Set to True to stop work. 
         queue : mp.Queue
             Queue.
 
@@ -192,9 +194,8 @@ class _Worker:
         # print('Worker arg, out')
         # print(arg, flush=True)
         # print(out, flush=True)
-        
-        
-        queue2.put((arg, out))
+        # print('putting is_copmlete', is_complete, flush=True)
+        queue2.put((arg, out, is_complete))
         
 
 class _WriteWorker:
@@ -206,31 +207,41 @@ class _WriteWorker:
                  queue2: mp.Queue):
                 
         while True:
-            if queue1.empty() and queue2.empty():
-                break
+            # if queue1.empty() and queue2.empty():
+            #     break
 
-            arg, data = queue2.get()
+            arg, data, is_complete = queue2.get()
+            if is_complete:
+                break
             # print('WriteWorker arg, data', flush=True)
             # print(arg, flush=True)
             # print(data, flush=True)
             self.f(arg, data)
                 
         
-def mp_read_write(args, 
+def mp_read_write(args: list, 
                   f_in: Callable, 
                   f_proc: Callable,
                   f_out: Callable,
-                  processes=10,
-                  chunksize=1,
-                  input_qmax = 100,
-                  output_qmax = 100,
+                  processes: int=10,
+                  input_qmax: int = 1000,
+                  output_qmax: int = 1000,
                   ):
     """Facilitate Read-in, multi-processing, and writing of mass data.
+    
+    
+    Data reading and data writing are put on their own Queues to maximize 
+    I/O throughput. Separate processes are opened for data processing. Provide 
+    three functions:
+        
+        * f_in -- Function that reads input
+        * f_proc -- Function that processes input and converts it to output. 
+        * f_out -- Function that write outupt. 
 
     Parameters
     ----------
-    args : TYPE
-        DESCRIPTION.
+    args : list[Any]
+        Arguments to input into function `f_in` as [arg1, arg2, ... argN].
     f_in : Callable
         Read-in function.
         Has signature:  data = f_in(arg).
@@ -243,13 +254,14 @@ def mp_read_write(args,
         Write-out function.
         Has signature: f_out(arg, processed)
         
-    processes : TYPE, optional
+    processes : int, optional
         Number of processes. The default is 10.
 
-    input_qmax : TYPE, optional
-        Max number of f_in outputs in input queue. The default is 100.
-    output_qmax : TYPE, optional
-        Max number of f_proc outputs in output queue. The default is 100.
+    input_qmax : int, optional
+        Max number of f_in outputs in input queue. The default is 1000.
+        
+    output_qmax : int, optional
+        Max number of f_proc outputs in output queue. The default is 1000.
     
 
     Returns
@@ -257,42 +269,56 @@ def mp_read_write(args,
     None.
 
     """
+    if _Settings.disable:
+        _mp_read_write_disabled(args, f_in, f_proc, f_out)
+        return
     
+        
     manager = mp.Manager()
-    
     queue1 = manager.Queue()
     queue2 = manager.Queue()
-    
-    arg_num = len(args)
-    
-    worker_in = _ReadWorker(f_in)
+        
+    worker_in = _ReadWorker(f_in, qmax=input_qmax)
     worker = _Worker(f_proc)
-    worker_out = _WriteWorker(f_out)
+    worker_out = _WriteWorker(f_out, qmax=output_qmax)
     
     
     # First process for reading in data
+    print("START READER #######################", flush=True)
     p = mp.Process(target=worker_in, args=(args, queue1))
     p.start()
     
+    print("START WRITER #######################", flush=True)
+    # Process for writing output data. 
+    p = mp.Process(target=worker_out, args=(queue1, queue2))
+    p.start()    
     
     # Pool of processes for computation
     pool = mp.Pool(processes=processes)
     
     jobs = []
-    # for ii in range(arg_num):
-    for arg in args:
+    print("START PROCESSING #######################", flush=True)
+    
+    is_complete = False
+    for arg in args[0 : -1]:
         data = queue1.get()
-        job = pool.apply_async(worker, args=(arg, data, queue2))
+        job = pool.apply_async(worker, args=(arg, data, is_complete, queue2, ))
         jobs.append(job)
         
-        
-    # Process for writing output data. 
-    p = mp.Process(target=worker_out, args=(queue1, queue2))
-    p.start()
+    is_complete = True
+    data = queue1.get()
+    job = pool.apply_async(worker, args=(arg, data, is_complete, queue2, ))
+    jobs.append(job)
+
     p.join()
+    return
     
         
-    
+def _mp_read_write_disabled(args, f_in, f_proc, f_out, ):
+    for arg in args:
+        data = f_in(arg)
+        processed = f_proc(data)
+        f_out(arg, processed)
         
     
         

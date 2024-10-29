@@ -4,6 +4,7 @@ import mptools
 import os
 from os.path import dirname, join, splitext
 from io import StringIO
+import time
 
 
 DIRPATH = dirname(__file__)
@@ -35,16 +36,16 @@ def create_dummy_files(num: int):
 def read(ii: int):
     name = f'data-{ii}.dat'
     path = join(DATA_DIR, name)
-    print('reading', ii, flush=True)        
+    print('1. reading', ii, flush=True)        
     # print('reading', ii, flush=False)        
     return np.genfromtxt(path)
     
         
 def process(data: np.ndarray):
     out = ((data**2) / 0.8) ** 0.654
-    print('processing', flush=True)        
+    print('2. processing', flush=True)        
     # print('processing', flush=False)      
-    
+    # time.sleep(0.25)
     
     
     file = StringIO()
@@ -56,7 +57,7 @@ def process(data: np.ndarray):
 def write(ii, string):
     name = f'output-{ii}.dat'
     path = join(DATA_DIR, name)        
-    print('writing', ii, flush=True)        
+    print('3. writing', ii, flush=True)        
     # print('writing', ii, flush=False)        
 
     # return np.savetxt(path, data)
