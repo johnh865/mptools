@@ -52,20 +52,12 @@ def _writer(x):
 
 def test_mp_write():
     
-    x = range(200000)
+    x = range(2000)
     fname = 'test1_data/test_mp_write.txt'
     with open(fname, 'w') as file:
         tqdm_starwrite(_writer, x, file=file, nprocs=18, chunksize=1000)
     
     
-
-def test_mp_write2():
-    x = range(20)
-    fname = '/test1_datatest_mp_write3.txt'
-    with open(fname, 'w') as file:    
-        mptools.mp_write(_writer, x, file=file, nprocs=8)
-        file.write('done')
-        
         
 
     
@@ -78,7 +70,6 @@ def test2():
     
     
 if __name__ == '__main__':
-    # test1()
+    test1()
     test_mp_write()
-    # test2()
-    # test_mp_write2()
+    test2()

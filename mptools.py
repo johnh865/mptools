@@ -91,7 +91,7 @@ def starwrite(func: Callable,
               nprocs: int, 
               chunksize=1
               ):
-    """Evluate a function that returns a string. Write that string to file. 
+    """Evaluate a function that returns a string. Write that string to file. 
     
 
     Parameters
@@ -119,8 +119,6 @@ def starwrite(func: Callable,
             file.write(string)
     return
 
-
-            
             
 def tqdm_starwrite(func: Callable, 
               args: list[list[Any]], 
@@ -128,6 +126,28 @@ def tqdm_starwrite(func: Callable,
               nprocs: int, 
               chunksize=1
               ):
+    """Evaluate a function that returns a string. Write that string to file. 
+    Display a TQDM progress bar while evaluating pool. 
+    
+
+    Parameters
+    ----------
+    func : Callable
+        Function to call. Must return a string.
+    args : list[Any]
+        DESCRIPTION.
+    file : TextIO
+        File to write to.
+    nprocs : int
+        Number of processes.
+    chunksize : TYPE, optional
+        Chunk size for parallelization. The default is 1.
+
+    Returns
+    -------
+    None.
+
+    """
     
     total = len(args)
     with Pool(processes=nprocs) as p:
@@ -141,15 +161,13 @@ def tqdm_starwrite(func: Callable,
     return
 
 
-
 Arg = TypeVar('Arg')
 InputQ1 = TypeVar('InputQ1')
 OutputQ1 = TypeVar('OutputQ1')
 
 
-
-
 class _ReadWorker:
+    """multiprocessing input stream."""
     def __init__(self, f_in: Callable, qmax=1000, starmap=False):
         self.f_in = f_in
         self.qmax = qmax
@@ -175,15 +193,20 @@ class _ReadWorker:
                 
                 
 class _Worker:
-    def __init__(self, f: Callable, starmap=False):
+    """Multiprocessing workers."""
+    def __init__(self, f: Callable, starmap=False, qmax=-1, sleep=.05):
         self.f = f
         self.starmap = starmap
+        self.qmax = qmax
+        self.sleep = sleep
         
+        if qmax == -1:
+            self._enable_qmax = False
+        else:
+            self._enable_qmax = True
         
     def __call__(self, 
-                 arg: Any, 
                  data: Any, 
-                 is_complete: bool,
                  queue2: mp.Queue
                  ):
         """
@@ -212,10 +235,17 @@ class _Worker:
         # print(out, flush=True)
         # print('putting is_copmlete', is_complete, flush=True)
         logger.debug('proc worker, putting result in queue2')
-        queue2.put((arg, out, is_complete))
+        
+        
+        if self._enable_qmax:
+            while queue2.qsize() > self.qmax:
+                time.sleep(self.sleep)
+                
+        queue2.put(out)
         
 
 class _WriteWorker:
+    """Write data to output stream."""
     def __init__(self, f: Callable, jobnum, starmap=False):
         self.f = f
         self.completed_count = 0
@@ -226,19 +256,17 @@ class _WriteWorker:
     def iterator(self, queue2: mp.Queue):
         while True:
             logger.debug('writer, retrieving from queue2')
-            arg, data, is_complete = queue2.get()
+            data = queue2.get()
+            # breakpoint()
             if self.starmap:
                 self.f(*data)
             else:
                 self.f(data)
             self.completed_count += 1
-            logger.debug('YIELDING')
             yield True
             
             if self.completed_count >= self.jobnum:
                 return
-            
-     
             
             
     def __call__(self, queue2: mp.Queue):
@@ -379,9 +407,8 @@ def _f_in_dummy2(*arg):
     return arg
 
 
-
 class MPReadWrite:
-    """Facilitate Read-in, multi-processing, and writing of mass data.
+    """Facilitate Read-in, multi-processing data, and writing  data.
     
     
     Data reading and data writing are put on their own Queues to maximize 
@@ -405,7 +432,6 @@ class MPReadWrite:
             def f_in(arg):
                 return arg
             
-        
     f_proc : Callable
         Processing function where multiprocessing is applied.
         f_proc must be able to take the output of f_in as an argument. 
@@ -426,17 +452,31 @@ class MPReadWrite:
         
     output_qmax : int, optional
         Max number of f_proc outputs in output queue. The default is 1000.
-    
-    starmap : bool, optinoal
+        
+    istar : bool, optinoal
         If True, map f_in as:
             data = f_in(*arg)
         Otherwise, map f_in as:
             data = f_in(arg)
             
         Defaults False 
+            
+    pstar : bool, optinoal
+        If True, map f_proc as:
+            data = f_proc(*arg)
+        Otherwise, map f_proc as:
+            data = f_proc(arg)
+            
+        Defaults False 
+    
+    ostar : bool, optinoal
+        If True, map f_out as:
+            data = f_out(*arg)
+        Otherwise, map f_in as:
+            data = f_out(arg)
+            
+        Defaults False         
     """    
-    
-    
     def __init__(
             self, 
             args: list, 
@@ -446,9 +486,9 @@ class MPReadWrite:
             processes: int=10,
             input_qmax: int = 1000,
             output_qmax: int = 1000,
-            istar = False,
-            pstar = False,
-            ostar = False,
+            istar: bool = False,
+            pstar: bool = False,
+            ostar: bool = False,
             
             ):
         
@@ -457,21 +497,6 @@ class MPReadWrite:
                 f_in = _f_in_dummy2
             else:
                 f_in = _f_in_dummy
-            
-        # if starmap:
-        #     def f_in2(x):
-        #         return f_in(*x)
-            
-        #     def f_proc2(x):
-        #         return f_proc(*x)
-            
-        #     def f_out2(x):
-        #         return f_out(*x)
-            
-        #     self.f_in = f_in2
-        #     self.f_proc = f_proc2
-        #     self.f_out = f_out2
-        # else:
             
         self.f_in = f_in
         self.f_proc = f_proc
@@ -502,8 +527,6 @@ class MPReadWrite:
         """Run all jobs. Wait to finish."""
         for ii in self:
             pass
-        
-        
     
 
     def __iter__(self):
@@ -521,65 +544,49 @@ class MPReadWrite:
         jobnum = len(args)
         
         if _Settings.disable:
-            _mp_read_write_disabled(args, f_in, f_proc, f_out)
+            _mp_read_write_disabled(args, f_in, f_proc, f_out,
+                                    istar=istar,
+                                    pstar=pstar,
+                                    ostar=ostar,
+                                    )
             return
         
+        # Set up manager to handle multiprocessing queues
         manager = mp.Manager()
         queue1 = manager.Queue()
         queue2 = manager.Queue()
-            
-        worker_in = _ReadWorker(f_in, qmax=input_qmax, starmap=istar)
-        worker = _Worker(f_proc, starmap=pstar)
-        worker_out = _WriteWorker(f_out, jobnum = jobnum, starmap=ostar)
         
+        # Create input, processing, and output workers
+        worker_in = _ReadWorker(f_in, qmax=input_qmax, starmap=istar)
+        worker = _Worker(f_proc, starmap=pstar, qmax=output_qmax)
+        worker_out = _WriteWorker(f_out, jobnum = jobnum, starmap=ostar)        
         
         # First process for reading in data
         logger.debug("START READER #######################")
         p1 = mp.Process(target=worker_in, args=(args, queue1))
         p1.start()
         
-        # Process for writing output data. 
-        # p2 = mp.Process(target=worker_out, args=(queue2,))
-        # p2.start()    
-        
-        
         jobs = []
         logger.debug("START PROCESSING #######################")
-        # breakpoint()
-        is_complete = False
         # Pool of processes for computation
         with mp.Pool(processes=processes) as pool:
-            for arg in args[0 : -1]:
+            for arg in args:
+                
+                # Retrieve input data from f_in
                 data = queue1.get()
                 logger.debug('apply async..%s, %s', arg, data)
-    
-                job = pool.apply_async(worker, 
-                                       args=(arg, data, is_complete,
-                                             queue2, ))
+                
+                # Start processing
+                job = pool.apply_async(worker, args=(data, queue2))
                 job.get()
                 jobs.append(job)
+                # Yield for every job processed. 
                 yield True
-                
-            # Run the last job, send 'is_complete' signal.
-            arg = args[-1]
-            is_complete = True
-            data = queue1.get()
-            job = pool.apply_async(worker, args=(arg, 
-                                                 data,
-                                                 is_complete, 
-                                                 queue2, ))
-            job.get()
-            jobs.append(job)
-            yield True
-            
+        
         logger.debug("START WRITER #######################")
-        # worker_out(queue2)
-        # breakpoint()
         for _ in worker_out.iterator(queue2):
+            # Yield again for every output written out. 
             yield True
-        
-        
-        
         
         self.queue1 = queue1
         self.queue2 = queue2
@@ -587,43 +594,41 @@ class MPReadWrite:
         self.jobs = jobs
         
         self.process_reader = p1
-        # self.process_writer = p2
-        
-        # for job in jobs:
-        #     while not job.ready():
-        #         time.sleep(.01)
-        #     yield True
+
         pool.join()
         p1.join()
-        # p2.join()
         return
         
         
-    # def __iter__(self):
-    #     jobs = self.jobs
-    #     for job in jobs:
-            
-            
-    #         while not job.ready():
-    #             time.sleep(0.01)
-            
-    #         print('!!!!', flush=True)
-    #         yield True
-        
-    #     self.process_reader.join()
-    #     self.process_writer.join()        
-        
-
-        
-            
-        # p.join()
+def _mp_read_write_disabled(args, f_in, f_proc, f_out,
+                            istar: bool = False,
+                            pstar: bool = False,
+                            ostar: bool = False,
+                            ):
+    f_in0 = f_in
+    f_proc0 = f_proc
+    f_out0 = f_out
     
+    if istar:
+        def f_in2(x):
+            return f_in(*x)
+        f_in0 = f_in2
         
-def _mp_read_write_disabled(args, f_in, f_proc, f_out, ):
+    if pstar:
+        def f_proc2(x):
+            return f_proc(*x)
+        f_proc0 = f_proc2
+        
+        
+    if ostar:
+        def f_out2(x):
+            return f_out2(*x)
+        f_out0 = f_out2
+        
     for arg in args:
-        data = f_in(arg)
-        processed = f_proc(data)
-        f_out(processed)
+        data = f_in0(arg)
+        processed = f_proc0(data)
+        f_out0(processed)
         
     
         
