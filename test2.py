@@ -59,21 +59,20 @@ def read(ii: int):
     path = join(DATA_DIR, name)
     print('1. reading', ii, flush=True)        
     # print('reading', ii, flush=False)        
-    return np.genfromtxt(path)
+    return ii, np.genfromtxt(path)
     
         
-def process(data: np.ndarray):
+def process(ii, data: np.ndarray):
     # time.sleep(0.5)
     out = ((data**2) / 0.8) ** 0.654
     print('2. processing', flush=True)        
     # print('processing', flush=False)      
     # time.sleep(0.25)
     
-    
     file = StringIO()
     np.savetxt(file, out)
     string = file.getvalue()
-    return string
+    return ii, string
 
     
 def write(ii, string):
@@ -100,12 +99,13 @@ def test_mp_readwrite():
     #     data2 = process(data)
     #     write(ii, data2)
     
-    mptools.mp_read_write(
+    mptools.MPReadWrite(
         args = args,
         f_in=read, 
         f_proc=process,
         f_out=write,
-        )
+        pstar=True, ostar=True,
+        ).run()
     
     dat_files = glob('data-*.dat', root_dir=DATA_DIR)
     out_files = glob('output-*.dat', root_dir=DATA_DIR)
@@ -135,22 +135,23 @@ def test_mp_readwrite():
         os.remove(path)
     
     
-def test_mp_readwrite_class():
-    num = 30
-    # create_dummy_files(num)
+# def test_mp_readwrite_class():
+#     num = 30
+#     # create_dummy_files(num)
 
-    args = np.arange(num)
-    mprw = mptools.MPReadWrite(args=args, 
-                                 f_in=read, 
-                                 f_proc=process, 
-                                 f_out=write,
-                                 processes=2)
+#     args = np.arange(num)
+#     mprw = mptools.MPReadWrite(args=args, 
+#                                  f_in=read, 
+#                                  f_proc=process, 
+#                                  f_out=write,
+#                                  processes=2,
+#                                  pstar=True, ostar=True)
     
-    mprw.progress_bar()
-    # list(mprw)
+#     mprw.progress_bar()
+#     # list(mprw)
     # m
     
     
 if __name__ == '__main__':
     test_mp_readwrite()
-    test_mp_readwrite_class()
+    # test_mp_readwrite_class()
