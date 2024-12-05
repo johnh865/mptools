@@ -1,6 +1,10 @@
 # -*- coding: utf-8 -*-
+"""Stress test mpreadwrite to make sure it's using all resources."""
+
 import numpy as np 
-import mptools
+# import mptools
+from mpreadwrite import MPReadWrite
+
 import os
 from os.path import dirname, join, splitext
 from io import StringIO
@@ -9,10 +13,13 @@ from glob import glob
 import sys
 import tqdm
 
-
 DIRPATH = dirname(__file__)
 FPATH = splitext(__file__)[0]
 DATA_DIR = FPATH + '_data'
+
+
+# import logging
+# logging.basicConfig(level=logging.DEBUG)
 
 
 class Capturing(list):
@@ -63,10 +70,15 @@ def read(ii: int):
     
         
 def process(ii, data: np.ndarray):
-    # time.sleep(0.5)
-    out = ((data**2) / 0.8) ** 0.654
-    print('2. processing', flush=True)        
-    # print('processing', flush=False)      
+    
+    # Increase this number for more strenuous test. 
+    NUM_CYCLES = 500
+    
+    for _ in range(NUM_CYCLES):
+        out = ((data**2) / 0.8) ** 0.654
+        
+        
+    print('2. processing', ii, flush=True)        
     # time.sleep(0.25)
     
     file = StringIO()
@@ -87,7 +99,7 @@ def write(ii, string):
 
 
 def test_mp_readwrite():
-    num = 30
+    num = 100
     create_dummy_files(num)
     
     # %%
@@ -99,7 +111,7 @@ def test_mp_readwrite():
     #     data2 = process(data)
     #     write(ii, data2)
     
-    mptools.MPReadWrite(
+    MPReadWrite(
         args = args,
         f_in=read, 
         f_proc=process,

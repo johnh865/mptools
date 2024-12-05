@@ -1,13 +1,17 @@
 # -*- coding: utf-8 -*-
-from mptools import MPReadWrite
+# from mptools import MPReadWrite
+from mpreadwrite import MPReadWrite
 import mptools
 # mptools.disable()
 from io import StringIO
 
 import logging
+from multiprocessing import Queue
+
+# logging.basicConfig(level=logging.DEBUG)
+# logger = logging.getLogger(__name__)
 
 
-logging.basicConfig(level=logging.DEBUG)
 def process(x, y,):
     z = x + y
     return x, y , z
@@ -27,6 +31,48 @@ class Output:
         print('----')
         print(string)
         self.io.write(string)
+
+
+
+# class Output:
+#     def __init__(self):
+#         pass
+    
+#     def __call__(self, queue: Queue):
+#         logger.debug('f output start')
+#         io1 = StringIO()
+#         self.io = io1
+             
+#         while True: 
+#             logger.debug('f output get')
+    
+#             x, y, z = queue.get()
+            
+#             logger.debug('f output retrieved.')
+#             string = f'{x},{y},{z}\n'
+#             print('----')
+#             print(string)
+#             io1.write(string)    
+#             yield
+            
+
+# def f_output(queue: Queue):
+#     logger.debug('f output start')
+#     io1 = StringIO()
+
+    
+#     while True: 
+#         logger.debug('f output get')
+
+#         x, y, z = queue.get()
+        
+#         logger.debug('f output retrieved.')
+#         string = f'{x},{y},{z}\n'
+#         print('----')
+#         print(string)
+#         io1.write(string)    
+#         yield
+        
         
     
 def test():
@@ -34,15 +80,13 @@ def test():
             (3, 4), 
             (5, 6))
     
-    
-    
-    
     f_in = None
     f_proc = process
     f_out = Output()
     
     mp = MPReadWrite(args, f_in, f_proc, f_out,
-                     istar=True,
+                     # istar=True,
+                     istar=False,
                      pstar=True,
                      ostar=True,)
     mp.progress_bar()
@@ -80,6 +124,8 @@ def f_test2_proc(y):
 
 def f_test2_out(z):
     print(z)
+
+
     
     
 def test2():
@@ -146,6 +192,24 @@ def test_func_error():
         
     if not got_error:
         assert False, "MPReadWrite did not correctly catch error."
+    
+        
+def test_func_error_in():
+    args = (1,2,3,4,5)
+    got_error = False
+    
+    try:
+        mp = MPReadWrite(args, 
+                         f_in=f_bad,
+                         f_proc=f_bad, 
+                         f_out=f_test_star_out,
+                         pstar=False)    
+        mp.progress_bar()
+    except MyError:
+        got_error =  True
+        
+    if not got_error:
+        assert False, "MPReadWrite did not correctly catch error."
         
         
     
@@ -156,3 +220,4 @@ if __name__ == '__main__':
     test2()
     test_star()
     test_func_error()
+    test_func_error_in()
