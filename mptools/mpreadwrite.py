@@ -72,12 +72,15 @@ class _ReadWorker:
                 raise out
             
             # Don't let too many items pile up in the queue
+
             while True:
                 qsize = queue1.qsize()
+                logger.debug('Items in queue1 %s, max= %s', qsize, self.qmax)
+
                 if qsize <= self.qmax:
                     break
                 else:
-                    time.sleep(0.1)
+                    time.sleep(0.01)
                 
                 
 class _Worker:
