@@ -50,7 +50,7 @@ def tqdm_map(func: Callable, args: list[Any], nprocs: int):
     """Map function for multiprocessing, including TQDM progress bar."""
     total = len(args)
     
-    if _Settings.disable:
+    if _Settings.disable or nprocs==1:
         r = list(tqdm.tqdm((func(a) for a in args), total=total))
         return r
     
