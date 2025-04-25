@@ -91,7 +91,7 @@ class _Func1:
 def tqdm_starmap(func: Callable, 
                  args: list[list[Any]],
                  nprocs: int, 
-                 chunksize = 0,
+                 chunksize = 1,
                  ):
     """Starmap function for multiprocessing, including TQDM progress bar."""
     # def func1(args):
@@ -103,7 +103,7 @@ def tqdm_starmap(func: Callable,
 def tqdm_dictmap(func: Callable, 
                  args: list[dict], 
                  nprocs: int,
-                 batchnum = 0,
+                 chunksize = 1,
                  ):
     """Dict map for multiprocessing, including TQDM progress bar. """
     func1 = _Func1(func).call_kwargs
