@@ -46,7 +46,35 @@ def enable():
     _Settings.disable = False
     
 
-def tqdm_map(func: Callable, args: list[Any], nprocs: int):
+class BatchJobs:
+    """Collect arguments into a larger job. Perhaps 
+    this might help I/O performance."""
+    def __init__(self, func: Callable, args: list[Any], num=500):
+        len_args = len(args)
+        batch_size = len_args // num        
+        
+        breaks = list(range(0, len_args, batch_size))
+        breaks.append(len_args)
+        
+        new_args = []
+        for i1, i2 in zip(breaks[0 : -1], breaks[1:]):
+            args_chunk = args[i1 : i2]        
+            new_args.append(args_chunk)
+        
+        self.args = new_args
+        self._func_old = func
+        
+        
+        
+    def func(self, args_chunk):
+        return [self._func_old(arg) for arg in args_chunk]
+        
+    def unbatch(self, result: list[Any]):
+        return sum(result, start=[])
+    
+    
+    
+def tqdm_map(func: Callable, args: list[Any], nprocs: int, batchnum=0):
     """Map function for multiprocessing, including TQDM progress bar."""
     total = len(args)
     
@@ -54,9 +82,27 @@ def tqdm_map(func: Callable, args: list[Any], nprocs: int):
         r = list(tqdm.tqdm((func(a) for a in args), total=total))
         return r
     
+    batch_jobs = False
+    if batchnum > 0:
+        batch_jobs = BatchJobs(func, args, num=batchnum)
+        func = batch_jobs.func
+        args = batch_jobs.args
+        total = len(args)
+    
     with Pool(processes=nprocs) as p:
-        r = list(tqdm.tqdm(p.imap(func, args,), total=total))
-        return r
+        result = list(tqdm.tqdm(p.imap(func, args,), total=total))
+        # r = p.map(func, args)
+   
+    if batch_jobs:
+        result = batch_jobs.unbatch(result)
+   
+    return result
+    
+    
+
+
+        
+        
 
 
 class _Func1:
@@ -74,18 +120,26 @@ class _Func1:
         
 
 
-def tqdm_starmap(func: Callable, args: list[list[Any]], nprocs: int):
+def tqdm_starmap(func: Callable, 
+                 args: list[list[Any]],
+                 nprocs: int, 
+                 batchnum = 0,
+                 ):
     """Starmap function for multiprocessing, including TQDM progress bar."""
     # def func1(args):
     #     return func(*args)
     func1 = _Func1(func)    
-    return tqdm_map(func1, args, nprocs)
+    return tqdm_map(func1, args, nprocs, batchnum=batchnum)
 
 
-def tqdm_dictmap(func: Callable, args: list[dict], nprocs: int):
+def tqdm_dictmap(func: Callable, 
+                 args: list[dict], 
+                 nprocs: int,
+                 batchnum = 0,
+                 ):
     """Dict map for multiprocessing, including TQDM progress bar. """
     func1 = _Func1(func).call_kwargs
-    return tqdm_map(func1, args, nprocs)
+    return tqdm_map(func1, args, nprocs, batchnum=batchnum)
 
 
 def starwrite(func: Callable, 
